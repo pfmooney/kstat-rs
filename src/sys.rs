@@ -7,7 +7,9 @@
 #![allow(non_camel_case_types)]
 
 use crate::Error;
-use libc::{c_char, c_int, c_longlong, c_uchar, c_uint, c_ulonglong, c_void, size_t};
+use libc::{
+    c_char, c_int, c_longlong, c_uchar, c_uint, c_ulonglong, c_void, size_t,
+};
 use std::convert::TryFrom;
 use std::ffi::CStr;
 use std::fmt::{self, Debug};
@@ -184,8 +186,16 @@ pub fn kstat_data_intr(kstat: &kstat_t) -> &kstat_intr_t {
 
 // Read a list of timer kstats from the given kstat.
 pub fn kstat_data_timer(kstat: &kstat_t) -> &[kstat_timer_t] {
-    assert!(kstat.ks_data_size == (kstat.ks_ndata as usize * size_of::<kstat_timer_t>()));
-    unsafe { std::slice::from_raw_parts(kstat.ks_ndata as *const _, kstat.ks_ndata as _) }
+    assert!(
+        kstat.ks_data_size
+            == (kstat.ks_ndata as usize * size_of::<kstat_timer_t>())
+    );
+    unsafe {
+        std::slice::from_raw_parts(
+            kstat.ks_ndata as *const _,
+            kstat.ks_ndata as _,
+        )
+    }
 }
 
 // Read a list of name-value kstats from the given kstat
@@ -200,7 +210,11 @@ pub fn kstat_data_named(kstat: &kstat_t) -> &[kstat_named_t] {
 extern "C" {
     pub fn kstat_open() -> *mut kstat_ctl_t;
     pub fn kstat_close(_: *mut kstat_ctl_t) -> i32;
-    pub fn kstat_read(_: *mut kstat_ctl_t, _: *mut kstat_t, _: *mut c_void) -> kid_t;
+    pub fn kstat_read(
+        _: *mut kstat_ctl_t,
+        _: *mut kstat_t,
+        _: *mut c_void,
+    ) -> kid_t;
     pub fn kstat_chain_update(_: *mut kstat_ctl_t) -> kid_t;
 }
 

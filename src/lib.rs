@@ -94,10 +94,7 @@ impl Ctl {
     /// Note that this will only return `Kstat`s which are successfully read. For example, it will
     /// ignore those with non-UTF-8 names.
     pub fn iter(&self) -> Iter<'_> {
-        Iter {
-            kstat: unsafe { (*self.ctl).kc_chain },
-            _d: PhantomData,
-        }
+        Iter { kstat: unsafe { (*self.ctl).kc_chain }, _d: PhantomData }
     }
 
     /// Read a [`Kstat`], returning the data for it.
@@ -215,7 +212,8 @@ unsafe impl<'a> Send for Kstat<'a> {}
 
 impl<'a> Kstat<'a> {
     fn read(&mut self, ctl: *mut sys::kstat_ctl_t) -> Result<(), Error> {
-        if unsafe { sys::kstat_read(ctl, self.ks, std::ptr::null_mut()) } == -1 {
+        if unsafe { sys::kstat_read(ctl, self.ks, std::ptr::null_mut()) } == -1
+        {
             Err(std::io::Error::last_os_error().into())
         } else {
             self.ks_snaptime = unsafe { (*self.ks).ks_snaptime };
@@ -501,10 +499,7 @@ impl<'a> TryFrom<&'a sys::kstat_named_t> for Named<'a> {
                     let len = k.value.charc.len();
                     std::slice::from_raw_parts(p, len)
                 };
-                Ok(Named {
-                    name,
-                    value: NamedData::Char(slice),
-                })
+                Ok(Named { name, value: NamedData::Char(slice) })
             }
             NamedType::Int32 => Ok(Named {
                 name,
@@ -525,10 +520,7 @@ impl<'a> TryFrom<&'a sys::kstat_named_t> for Named<'a> {
             }),
             NamedType::String => {
                 let s = (&unsafe { k.value.str }).try_into()?;
-                Ok(Named {
-                    name,
-                    value: NamedData::String(s),
-                })
+                Ok(Named { name, value: NamedData::String(s) })
             }
         }
     }
@@ -559,7 +551,9 @@ mod test {
             .filter(Some("cpu_info"), Some(0), Some("cpu_info0"))
             .next()
             .expect("Failed to find kstat cpu_info:0:cpu_info0");
-        if let Data::Named(data) = ctl.read(&mut kstat).expect("Failed to read kstat") {
+        if let Data::Named(data) =
+            ctl.read(&mut kstat).expect("Failed to read kstat")
+        {
             let mut items = BTreeMap::new();
             for item in data.iter() {
                 items.insert(item.name, item);
@@ -617,31 +611,51 @@ mod test {
                 items,
                 kstat_items
             );
-            const SKIPPED_STATS: &[&'static str] = &["current_clock_Hz", "current_cstate"];
+            const SKIPPED_STATS: &[&'static str] =
+                &["current_clock_Hz", "current_cstate"];
             for (key, value) in kstat_items.iter() {
-                let name = key.split(':').last().expect("Expected to split on ':'");
+                let name =
+                    key.split(':').last().expect("Expected to split on ':'");
                 if SKIPPED_STATS.contains(&name) {
-                    println!("Skipping stat '{}', not stable enough for testing", name);
+                    println!(
+                        "Skipping stat '{}', not stable enough for testing",
+                        name
+                    );
                     continue;
                 }
-                let item = items
-                    .get(name)
-                    .expect(&format!("Expected a name/value pair with name '{}'", name));
+                let item = items.get(name).expect(&format!(
+                    "Expected a name/value pair with name '{}'",
+                    name
+                ));
                 println!("key: {:#?}\nvalue: {:#?}", key, value);
                 println!("item: {:#?}", item);
                 match item.value {
                     NamedData::Char(slice) => {
-                        for (sl, by) in slice.iter().zip(value.as_bytes().iter()) {
+                        for (sl, by) in
+                            slice.iter().zip(value.as_bytes().iter())
+                        {
                             if by == &0 {
                                 break;
                             }
-                            assert_eq!(sl, by, "Expected equal bytes, found {} and {}", sl, by);
+                            assert_eq!(
+                                sl, by,
+                                "Expected equal bytes, found {} and {}",
+                                sl, by
+                            );
                         }
                     }
-                    NamedData::Int32(i) => assert_eq!(i, value.parse().unwrap()),
-                    NamedData::UInt32(u) => assert_eq!(u, value.parse().unwrap()),
-                    NamedData::Int64(i) => assert_eq!(i, value.parse().unwrap()),
-                    NamedData::UInt64(u) => assert_eq!(u, value.parse().unwrap()),
+                    NamedData::Int32(i) => {
+                        assert_eq!(i, value.parse().unwrap())
+                    }
+                    NamedData::UInt32(u) => {
+                        assert_eq!(u, value.parse().unwrap())
+                    }
+                    NamedData::Int64(i) => {
+                        assert_eq!(i, value.parse().unwrap())
+                    }
+                    NamedData::UInt64(u) => {
+                        assert_eq!(u, value.parse().unwrap())
+                    }
                     NamedData::String(s) => assert_eq!(s, value),
                 }
             }
