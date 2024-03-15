@@ -1,26 +1,25 @@
 //! Rust library for interfacing with illumos kernel statistics, `libkstat`.
 //!
-//! The illumos `kstat` system is a kernel module for exporting data about the system to user
-//! processes. Users create a control handle to the system with [`Ctl::new`], which gives them
-//! access to the statistics exported by their system.
+//! The illumos `kstat` system is a kernel module for exporting data about the
+//! system to user processes. Users create a control handle to the system with
+//! [`Ctl::new`], which gives them access to the statistics exported by their
+//! system.
 //!
-//! Individual statistics are represented by the [`Kstat`] type, which includes information about
-//! the type of data, when it was created or last updated, and the actual data itself. The `Ctl`
-//! handle maintains a linked list of `Kstat` objects, which users may walk with the [`Ctl::iter`]
-//! method.
+//! Individual statistics are represented by the [`Kstat`] type, which includes
+//! information about the type of data, when it was created or last updated, and
+//! the actual data itself. The `Ctl` handle maintains a linked list of `Kstat`
+//! objects, which users may walk with the [`Ctl::iter`] method.
 //!
-//! Each kstat is identified by a module, an instance number, and a name. In addition, the data may
-//! be of several different types, such as name/value pairs or interrupt statistics. These types
-//! are captured by the [`Data`] enum, which can be read and returned by using the [`Ctl::read`]
-//! method.
+//! Each kstat is identified by a module, an instance number, and a name. In
+//! addition, the data may be of several different types, such as name/value
+//! pairs or interrupt statistics. These types are captured by the [`Data`]
+//! enum, which can be read and returned by using the [`Ctl::read`] method.
 
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use std::cmp::Ord;
-use std::cmp::Ordering;
-use std::cmp::PartialOrd;
+use std::cmp::{Ord, Ordering, PartialOrd};
 use std::convert::TryFrom;
 use std::ffi::CStr;
 use std::marker::PhantomData;
@@ -57,8 +56,8 @@ pub enum Error {
 
 /// `Ctl` is a handle to the kstat library.
 ///
-/// Users instantiate a control handle and access the kstat's it contains, for example via the
-/// [`Ctl::iter`] method.
+/// Users instantiate a control handle and access the kstat's it contains, for
+/// example via the [`Ctl::iter`] method.
 #[derive(Debug)]
 pub struct Ctl {
     ctl: *mut sys::kstat_ctl_t,
@@ -82,8 +81,9 @@ impl Ctl {
 
     /// Synchronize this `Ctl` with the kernel's view of the data.
     ///
-    /// A `Ctl` is really a snapshot of the kernel's internal list of kstats. This method consumes
-    /// and updates a control object, bringing it into sync with the kernel's copy.
+    /// A `Ctl` is really a snapshot of the kernel's internal list of kstats.
+    /// This method consumes and updates a control object, bringing it into sync
+    /// with the kernel's copy.
     pub fn update(self) -> Result<Self, Error> {
         let kid = unsafe { sys::kstat_chain_update(self.ctl) };
         if kid == -1 {
@@ -95,8 +95,8 @@ impl Ctl {
 
     /// Return an iterator over the [`Kstat`]s in `self`.
     ///
-    /// Note that this will only return `Kstat`s which are successfully read. For example, it will
-    /// ignore those with non-UTF-8 names.
+    /// Note that this will only return `Kstat`s which are successfully read.
+    /// For example, it will ignore those with non-UTF-8 names.
     pub fn iter(&self) -> Iter<'_> {
         Iter { kstat: unsafe { (*self.ctl).kc_chain }, _d: PhantomData }
     }
@@ -116,25 +116,10 @@ impl Ctl {
         instance: Option<i32>,
         name: Option<&'a str>,
     ) -> impl Iterator<Item = Kstat<'a>> {
-        self.iter().filter_map(move |kstat| {
-            fn should_include<T>(inner: &T, cmp: &Option<T>) -> bool
-            where
-                T: PartialEq,
-            {
-                if let Some(cmp) = cmp {
-                    inner == cmp
-                } else {
-                    true // Include if this comparator is None
-                }
-            }
-            let include = should_include(&kstat.ks_module, &module)
-                && should_include(&kstat.ks_instance, &instance)
-                && should_include(&kstat.ks_name, &name);
-            if include {
-                Some(kstat)
-            } else {
-                None
-            }
+        self.iter().filter(move |kstat| {
+            module.map(|m| m == kstat.ks_module).unwrap_or(true)
+                || instance.map(|i| i == kstat.ks_instance).unwrap_or(true)
+                || name.map(|n| n == kstat.ks_name).unwrap_or(true)
         })
     }
 }
@@ -195,20 +180,18 @@ pub struct Kstat<'a> {
 
 impl<'a> PartialOrd for Kstat<'a> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(
-            self.ks_class
-                .cmp(other.ks_class)
-                .then_with(|| self.ks_module.cmp(other.ks_module))
-                .then_with(|| self.ks_instance.cmp(&other.ks_instance))
-                .then_with(|| self.ks_name.cmp(other.ks_name))
-                .then_with(|| self.ks_class.cmp(other.ks_name)),
-        )
+        Some(std::cmp::Ord::cmp(self, other))
     }
 }
 
 impl<'a> Ord for Kstat<'a> {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap()
+        self.ks_class
+            .cmp(other.ks_class)
+            .then_with(|| self.ks_module.cmp(other.ks_module))
+            .then_with(|| self.ks_instance.cmp(&other.ks_instance))
+            .then_with(|| self.ks_name.cmp(other.ks_name))
+            .then_with(|| self.ks_class.cmp(other.ks_name))
     }
 }
 
@@ -309,11 +292,11 @@ impl<'a> TryFrom<&'a sys::kstat_t> for Kstat<'a> {
         Ok(Kstat {
             ks_crtime: k.ks_crtime,
             ks_snaptime: k.ks_snaptime,
-            ks_module: kstat_str_to_cstr(&k.ks_module)?,
+            ks_module: kstat_str_parse(&k.ks_module)?,
             ks_instance: k.ks_instance,
-            ks_name: kstat_str_to_cstr(&k.ks_name)?,
+            ks_name: kstat_str_parse(&k.ks_name)?,
             ks_type: Type::try_from(k.ks_type)?,
-            ks_class: kstat_str_to_cstr(&k.ks_name)?,
+            ks_class: kstat_str_parse(&k.ks_name)?,
             ks: k as *const _ as *mut _,
         })
     }
@@ -454,7 +437,7 @@ impl<'a> TryFrom<&'a sys::kstat_timer_t> for Timer<'a> {
     type Error = Error;
     fn try_from(k: &'a sys::kstat_timer_t) -> Result<Self, Self::Error> {
         Ok(Self {
-            name: kstat_str_to_cstr(&k.name)?,
+            name: kstat_str_parse(&k.name)?,
             num_events: k.num_events as _,
             elapsed_time: k.elapsed_time,
             min_time: k.min_time,
@@ -551,13 +534,14 @@ impl<'a> NamedData<'a> {
 impl<'a> TryFrom<&'a sys::kstat_named_t> for Named<'a> {
     type Error = Error;
     fn try_from(k: &'a sys::kstat_named_t) -> Result<Self, Self::Error> {
-        let name = kstat_str_to_cstr(&k.name)?;
+        let name = kstat_str_parse(&k.name)?;
         match NamedType::try_from(k.data_type)? {
             NamedType::Char => {
                 let slice = unsafe {
-                    let p = k.value.charc.as_ptr() as *const u8;
-                    let len = k.value.charc.len();
-                    std::slice::from_raw_parts(p, len)
+                    std::slice::from_raw_parts(
+                        k.value.charc.as_ptr(),
+                        k.value.charc.len(),
+                    )
                 };
                 Ok(Named { name, value: NamedData::Char(slice) })
             }
@@ -589,7 +573,7 @@ impl<'a> TryFrom<&'a sys::kstat_named_t> for Named<'a> {
     }
 }
 
-pub(crate) fn kstat_str_to_cstr(
+pub(crate) fn kstat_str_parse(
     s: &[c_char; sys::KSTAT_STRLEN],
 ) -> Result<&str, Error> {
     unsafe { CStr::from_ptr(s.as_ptr() as *const _) }
