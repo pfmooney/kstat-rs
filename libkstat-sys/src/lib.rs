@@ -138,14 +138,51 @@ pub struct kstat_io_t {
     pub rcnt: c_uint,
 }
 
-#[link(name = "kstat")]
-extern "C" {
-    pub fn kstat_open() -> *mut kstat_ctl_t;
-    pub fn kstat_close(kc: *mut kstat_ctl_t) -> i32;
-    pub fn kstat_read(
-        kc: *mut kstat_ctl_t,
-        ksp: *mut kstat_t,
-        data: *mut c_void,
-    ) -> kid_t;
-    pub fn kstat_chain_update(kc: *mut kstat_ctl_t) -> kid_t;
+#[cfg(any(target_os = "illumos", not(feature = "stubs")))]
+mod native_ffi {
+    use super::{kid_t, kstat_ctl_t, kstat_t};
+    use std::os::raw::c_void;
+
+    #[link(name = "kstat")]
+    extern "C" {
+        pub fn kstat_open() -> *mut kstat_ctl_t;
+        pub fn kstat_close(kc: *mut kstat_ctl_t) -> i32;
+        pub fn kstat_read(
+            kc: *mut kstat_ctl_t,
+            ksp: *mut kstat_t,
+            data: *mut c_void,
+        ) -> kid_t;
+        pub fn kstat_chain_update(kc: *mut kstat_ctl_t) -> kid_t;
+    }
 }
+#[cfg(any(target_os = "illumos", not(feature = "stubs")))]
+pub use native_ffi::*;
+
+#[cfg(all(not(target_os = "illumos"), feature = "stubs"))]
+mod stub_ffi {
+    use super::{kid_t, kstat_ctl_t, kstat_t};
+    use std::os::raw::c_void;
+
+    fn errfn() -> ! {
+        panic!("libkstat support absent on non-illumos machines")
+    }
+
+    pub unsafe fn kstat_open() -> *mut kstat_ctl_t {
+        errfn()
+    }
+    pub unsafe fn kstat_close(_kc: *mut kstat_ctl_t) -> i32 {
+        errfn()
+    }
+    pub unsafe fn kstat_read(
+        _kc: *mut kstat_ctl_t,
+        _ksp: *mut kstat_t,
+        _data: *mut c_void,
+    ) -> kid_t {
+        errfn()
+    }
+    pub unsafe fn kstat_chain_update(_kc: *mut kstat_ctl_t) -> kid_t {
+        errfn()
+    }
+}
+#[cfg(all(not(target_os = "illumos"), feature = "stubs"))]
+pub use stub_ffi::*;

@@ -14,3 +14,7 @@ libkstat_sys.workspace = true
 
 [dev-dependencies]
 subprocess.workspace = true
+
+[features]
+default = []
+stubs = ["libkstat_sys/stubs"]
