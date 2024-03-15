@@ -1,0 +1,16 @@
+[package]
+name = "kstat-rs"
+version = "0.2.3"
+authors = ["Benjamin Naecker <ben@oxide.computer>"]
+edition = "2021"
+license = "MPL-2.0"
+description = "Rust interface to illumos's libkstat"
+repository = "https://github.com/oxidecomputer/kstat-rs"
+
+[dependencies]
+libc.workspace = true
+thiserror.workspace = true
+libkstat_sys.workspace = true
+
+[dev-dependencies]
+subprocess.workspace = true

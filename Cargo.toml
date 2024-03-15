@@ -1,15 +1,18 @@
-[package]
-name = "kstat-rs"
-version = "0.2.3"
-authors = ["Benjamin Naecker <ben@oxide.computer>"]
-edition = "2021"
-license = "MPL-2.0"
-description = "Rust interface to illumos's libkstat"
-repository = "https://github.com/oxidecomputer/kstat-rs"
+[workspace]
+resolver = "2"
 
-[dependencies]
+members = [
+  "libkstat-sys/",
+  "kstat-rs",
+]
+
+default-members = [
+  "libkstat-sys/",
+  "kstat-rs",
+]
+
+[workspace.dependencies]
 libc = "0.2"
 thiserror = "1"
-
-[dev-dependencies]
+libkstat_sys = { path = "libkstat-sys" }
 subprocess = "0.2"

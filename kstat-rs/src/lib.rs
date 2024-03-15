@@ -22,10 +22,14 @@ use std::cmp::Ord;
 use std::cmp::Ordering;
 use std::cmp::PartialOrd;
 use std::convert::TryFrom;
+use std::ffi::CStr;
 use std::marker::PhantomData;
+use std::mem::size_of;
+use std::os::raw::c_char;
+
 use thiserror::Error;
 
-mod sys;
+use libkstat_sys as sys;
 
 /// Kinds of errors returned by the library.
 #[derive(Debug, Error)]
@@ -224,21 +228,77 @@ impl<'a> Kstat<'a> {
     fn data(&self) -> Result<Data<'a>, Error> {
         let ks = unsafe { self.ks.as_ref() }.ok_or_else(|| Error::NullData)?;
         match self.ks_type {
-            Type::Raw => Ok(Data::Raw(sys::kstat_data_raw(ks))),
-            Type::Named => Ok(Data::Named(
-                sys::kstat_data_named(ks)
-                    .iter()
-                    .map(Named::try_from)
-                    .collect::<Result<_, _>>()?,
-            )),
-            Type::Intr => Ok(Data::Intr(Intr::from(sys::kstat_data_intr(ks)))),
-            Type::Io => Ok(Data::Io(Io::from(sys::kstat_data_io(ks)))),
-            Type::Timer => Ok(Data::Timer(
-                sys::kstat_data_timer(ks)
-                    .iter()
-                    .map(Timer::try_from)
-                    .collect::<Result<_, _>>()?,
-            )),
+            Type::Raw => {
+                if ks.ks_ndata == 0 {
+                    Ok(Data::Raw(Vec::new()))
+                } else {
+                    let item_size = ks.ks_data_size / ks.ks_ndata as usize;
+                    let mut start = ks.ks_data as *const u8;
+                    let mut out = Vec::with_capacity(ks.ks_ndata as usize);
+                    for _ in 0..ks.ks_ndata {
+                        out.push(unsafe {
+                            std::slice::from_raw_parts(start, item_size)
+                        });
+                        start = unsafe { start.add(item_size) };
+                    }
+                    Ok(Data::Raw(out))
+                }
+            }
+            Type::Named => {
+                let reported_count = ks.ks_ndata as usize;
+                let actual_count =
+                    ks.ks_data_size / size_of::<sys::kstat_named_t>();
+                let count = reported_count.min(actual_count);
+                let data_ents = unsafe {
+                    std::slice::from_raw_parts(ks.ks_data as *const _, count)
+                };
+
+                Ok(Data::Named(
+                    data_ents
+                        .iter()
+                        .map(Named::try_from)
+                        .collect::<Result<_, _>>()?,
+                ))
+            }
+            Type::Intr => {
+                assert!(ks.ks_ndata == 1);
+                assert!(ks.ks_data_size == size_of::<sys::kstat_intr_t>());
+
+                let ks_intr = unsafe {
+                    (ks.ks_data as *const sys::kstat_intr_t).as_ref()
+                }
+                .unwrap();
+                Ok(Data::Intr(Intr::from(ks_intr)))
+            }
+            Type::Io => {
+                assert!(ks.ks_ndata == 1);
+                assert!(ks.ks_data_size == size_of::<sys::kstat_io_t>());
+
+                let ks_io =
+                    unsafe { (ks.ks_data as *const sys::kstat_io_t).as_ref() }
+                        .unwrap();
+                Ok(Data::Io(Io::from(ks_io)))
+            }
+            Type::Timer => {
+                assert!(
+                    ks.ks_data_size
+                        == (ks.ks_ndata as usize
+                            * size_of::<sys::kstat_timer_t>())
+                );
+                let ks_timers = unsafe {
+                    std::slice::from_raw_parts(
+                        ks.ks_data as *const sys::kstat_timer_t,
+                        ks.ks_ndata as _,
+                    )
+                };
+
+                Ok(Data::Timer(
+                    ks_timers
+                        .iter()
+                        .map(Timer::try_from)
+                        .collect::<Result<_, _>>()?,
+                ))
+            }
         }
     }
 }
@@ -249,11 +309,11 @@ impl<'a> TryFrom<&'a sys::kstat_t> for Kstat<'a> {
         Ok(Kstat {
             ks_crtime: k.ks_crtime,
             ks_snaptime: k.ks_snaptime,
-            ks_module: sys::array_to_cstr(&k.ks_module)?,
+            ks_module: kstat_str_to_cstr(&k.ks_module)?,
             ks_instance: k.ks_instance,
-            ks_name: sys::array_to_cstr(&k.ks_name)?,
+            ks_name: kstat_str_to_cstr(&k.ks_name)?,
             ks_type: Type::try_from(k.ks_type)?,
-            ks_class: sys::array_to_cstr(&k.ks_name)?,
+            ks_class: kstat_str_to_cstr(&k.ks_name)?,
             ks: k as *const _ as *mut _,
         })
     }
@@ -394,7 +454,7 @@ impl<'a> TryFrom<&'a sys::kstat_timer_t> for Timer<'a> {
     type Error = Error;
     fn try_from(k: &'a sys::kstat_timer_t) -> Result<Self, Self::Error> {
         Ok(Self {
-            name: sys::array_to_cstr(&k.name)?,
+            name: kstat_str_to_cstr(&k.name)?,
             num_events: k.num_events as _,
             elapsed_time: k.elapsed_time,
             min_time: k.min_time,
@@ -491,7 +551,7 @@ impl<'a> NamedData<'a> {
 impl<'a> TryFrom<&'a sys::kstat_named_t> for Named<'a> {
     type Error = Error;
     fn try_from(k: &'a sys::kstat_named_t) -> Result<Self, Self::Error> {
-        let name = sys::array_to_cstr(&k.name)?;
+        let name = kstat_str_to_cstr(&k.name)?;
         match NamedType::try_from(k.data_type)? {
             NamedType::Char => {
                 let slice = unsafe {
@@ -519,11 +579,22 @@ impl<'a> TryFrom<&'a sys::kstat_named_t> for Named<'a> {
                 value: NamedData::UInt64(unsafe { k.value.ui64 }),
             }),
             NamedType::String => {
-                let s = (&unsafe { k.value.str }).try_into()?;
-                Ok(Named { name, value: NamedData::String(s) })
+                let data_cstr = unsafe { CStr::from_ptr(k.value.str.addr) };
+                let data_str =
+                    data_cstr.to_str().map_err(|_| Error::InvalidString)?;
+
+                Ok(Named { name, value: NamedData::String(data_str) })
             }
         }
     }
+}
+
+pub(crate) fn kstat_str_to_cstr(
+    s: &[c_char; sys::KSTAT_STRLEN],
+) -> Result<&str, Error> {
+    unsafe { CStr::from_ptr(s.as_ptr() as *const _) }
+        .to_str()
+        .map_err(|_| Error::InvalidString)
 }
 
 #[cfg(test)]
