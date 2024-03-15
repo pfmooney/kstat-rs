@@ -302,17 +302,6 @@ impl<'a> TryFrom<&'a sys::kstat_t> for Kstat<'a> {
     }
 }
 
-impl<'a> TryFrom<&'a *mut sys::kstat_t> for Kstat<'a> {
-    type Error = Error;
-    fn try_from(k: &'a *mut sys::kstat_t) -> Result<Self, Self::Error> {
-        if let Some(k) = unsafe { k.as_ref() } {
-            Kstat::try_from(k)
-        } else {
-            Err(Error::NullData)
-        }
-    }
-}
-
 /// The type of a kstat.
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Type {
@@ -410,17 +399,6 @@ impl From<&sys::kstat_io_t> for Io {
     }
 }
 
-impl TryFrom<&*const sys::kstat_io_t> for Io {
-    type Error = Error;
-    fn try_from(k: &*const sys::kstat_io_t) -> Result<Self, Self::Error> {
-        if let Some(k) = unsafe { k.as_ref() } {
-            Ok(Io::from(k))
-        } else {
-            Err(Error::NullData)
-        }
-    }
-}
-
 /// A timer kernel statistic.
 #[derive(Debug, Copy, Clone)]
 pub struct Timer<'a> {
@@ -448,17 +426,6 @@ impl<'a> TryFrom<&'a sys::kstat_timer_t> for Timer<'a> {
     }
 }
 
-impl<'a> TryFrom<&'a *const sys::kstat_timer_t> for Timer<'a> {
-    type Error = Error;
-    fn try_from(k: &'a *const sys::kstat_timer_t) -> Result<Self, Self::Error> {
-        if let Some(k) = unsafe { k.as_ref() } {
-            Timer::try_from(k)
-        } else {
-            Err(Error::NullData)
-        }
-    }
-}
-
 /// Interrupt kernel statistic.
 #[derive(Debug, Copy, Clone)]
 pub struct Intr {
@@ -477,17 +444,6 @@ impl From<&sys::kstat_intr_t> for Intr {
             watchdog: k.intr_watchdog,
             spurious: k.intr_spurious,
             multisvc: k.intr_multisvc,
-        }
-    }
-}
-
-impl TryFrom<&*const sys::kstat_intr_t> for Intr {
-    type Error = Error;
-    fn try_from(k: &*const sys::kstat_intr_t) -> Result<Self, Self::Error> {
-        if let Some(k) = unsafe { k.as_ref() } {
-            Ok(Intr::from(k))
-        } else {
-            Err(Error::NullData)
         }
     }
 }
